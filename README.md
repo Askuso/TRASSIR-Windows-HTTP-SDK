@@ -1,62 +1,160 @@
-# Template App TRASSIR Windows HTTP SDK
+# TRASSIR Windows Server by HTTP SDK
 
-[Русская версия](README_RU.md)
+## Documentation
 
-Zabbix template for monitoring **TRASSIR Server running on Windows** through the built-in TRASSIR Web SDK API.
+- [English technical documentation](docs/TRASSIR_Windows_HTTP_SDK_Technical_Documentation_EN.docx)
+- [Russian README](README_RU.md)
 
-The template uses Zabbix Script items, JavaScript `HttpRequest`, dependent items, low-level discovery, calculated items, triggers, graphs, and a template dashboard. It does not require Zabbix Agent, SNMP, or external scripts.
+## Overview
 
-> This template is intended for TRASSIR Server on Windows. Hardware TRASSIR recorders can return different health values and require a separate template.
+This template monitors TRASSIR Server installations running on Windows through the built-in HTTP SDK without external scripts or a Zabbix agent.
 
-## Features
+It collects:
 
-- CPU, uptime, database, network, automation, and disk state.
-- Automatic discovery of local cameras and archive disks.
-- Direct camera online/offline state from TRASSIR.
-- Per-camera FPS, bitrate, recording, recording debt, errors, archive retention, and archive usage.
-- Per-disk capacity, model, serial number, performance, archive retention, errors, availability, read-only state, and formatting state.
-- Camera availability summary.
-- Archive retention baseline based on the rolling 7-day average.
-- Built-in TRASSIR-inspired dashboard.
-- Comma-separated disk exclusion list.
+- TRASSIR health, CPU utilization, uptime, database, storage, network, and automation status;
+- overall local-camera availability;
+- per-camera signal state, main/substream FPS and bitrate, recording status, recording debt, archive depth, archive consumption, forecast consumption, and diagnostic errors;
+- archive disk model, serial number, capacity, availability, read-only state, error counter, and read/write throughput;
+- current archive depth, complete archive days, a rolling seven-day average, and archive depth relative to that average.
 
-## Quick start
+Low-level discovery creates an independent SCRIPT master item for every local channel. A timeout or error on one channel does not interrupt polling of the other channels.
 
-1. Import `template/Template_App_TRASSIR_Windows_HTTP_SDK_v4.1.0.xml`.
-2. Link `Template App TRASSIR Windows HTTP SDK` to the TRASSIR Windows host.
-3. Set `{$TRASSIR.SCHEME}`, `{$TRASSIR.PORT}`, and `{$TRASSIR.SDK.PASSWORD}`.
-4. Wait for the master items and LLD, or execute them manually.
-5. Open the host dashboard.
+The template includes triggers, graph prototypes, calculated archive-baseline items, and an overview dashboard.
 
-See [Installation](docs/INSTALL.md) and [Configuration](docs/CONFIGURATION.md).
+## Requirements
 
-## Default polling
+- Zabbix server 7.2 or newer.
+- TRASSIR Server running on Windows with HTTP SDK enabled.
+- Network access from the Zabbix server or proxy to the TRASSIR HTTP SDK port.
+- An SDK password with permission to read settings and the object tree.
+- The host interface address must resolve to the TRASSIR server IP address or DNS name.
 
-- Health and local objects: 2 minutes.
-- Cameras: 5 minutes.
-- Archive disks: 5 minutes.
-- Archive calculated items: 10 minutes.
+## Tested versions
 
-## Disk exclusions
+The template was developed and validated with:
 
-```text
-{$TRASSIR.DISK.EXCLUDE}=C,D,R
-```
+- Zabbix 7.2.2;
+- TRASSIR Server on Windows;
+- monitoring through the built-in TRASSIR HTTP SDK.
 
-Metrics and graphs remain available; trigger problems are suppressed.
+Other Windows Server and TRASSIR versions may expose different SDK fields. Feedback and test results are welcome.
 
-## Limitations
+## Setup
 
-- Local channels only.
-- Hardware recording is not supported by every camera.
-- RAM is not included in this Windows template.
-- A stable archive baseline requires seven days.
-- The dashboard is a host/template dashboard, not a global dashboard.
+### TRASSIR configuration
+
+1. Open the TRASSIR WebServer/SDK settings.
+2. Enable the HTTP/Web SDK.
+3. Create or select a technical monitoring account.
+4. Grant read access to settings and the object tree.
+5. Note the HTTP SDK port and SDK password.
+6. Make sure the TRASSIR server is reachable from the Zabbix server or assigned proxy.
+
+### Zabbix configuration
+
+1. Import `templates/7.2/template_app_trassir_windows_http_sdk.xml`.
+2. Create a host for the TRASSIR Windows server.
+3. Set the host interface address to the TRASSIR server IP address or DNS name.
+4. Link the template `Template App TRASSIR Windows HTTP SDK`.
+5. Configure the required macros on the host.
+6. Wait for the master items and low-level discovery rules to run.
+
+## Macros
+
+| Macro | Default | Description |
+|---|---:|---|
+| `{$TRASSIR.SCHEME}` | `https` | HTTP SDK connection scheme. |
+| `{$TRASSIR.PORT}` | `8080` | HTTP SDK port. |
+| `{$TRASSIR.SDK.PASSWORD}` | empty | Required SDK password. |
+| `{$TRASSIR.POLL.INTERVAL}` | `2m` | Health and object-tree polling interval. |
+| `{$TRASSIR.CHANNEL.POLL.INTERVAL}` | `5m` | Polling interval for every discovered channel. |
+| `{$TRASSIR.DISK.POLL.INTERVAL}` | `5m` | Archive-disk polling interval. |
+| `{$TRASSIR.CPU.WARN}` | `85` | CPU utilization warning threshold, percent. |
+| `{$TRASSIR.RECORD.DEBT.WARN}` | `5` | Recording-debt threshold, seconds. |
+| `{$TRASSIR.ARCHIVE.MIN.DAYS}` | `7` | Minimum overall main archive depth, days. |
+| `{$TRASSIR.CHANNEL.ARCHIVE.MIN.DAYS}` | `7` | Minimum per-camera archive depth, days. |
+| `{$TRASSIR.DISK.EXCLUDE}` | empty | Comma-separated disk IDs whose trigger problems must be suppressed. |
+
+## Discovery rules
+
+### Channel discovery
+
+Discovers only local TRASSIR channels and creates a separate SCRIPT master item for every channel with dependent items for:
+
+- direct online/signal state;
+- main-stream and substream FPS;
+- main-stream, substream, and recording bitrate;
+- local and hardware recording state;
+- recording debt and last recording error;
+- main and substream archive depth;
+- daily archive consumption and forecast consumption;
+- grabber error, bitrate-limit state, and slow archive merge state.
+
+The camera GUID is used as the stable technical identifier. The camera name is used in visible names and tags.
+
+### Archive disk discovery
+
+Creates items for disk inventory, state, capacity, archive depth, error counters, and throughput.
+
+Disks not used for archive recording can be excluded from trigger problems with:
+
+`{$TRASSIR.DISK.EXCLUDE}=C,D,R`
+
+Data collection and graphs remain enabled for excluded disks.
+
+## Main triggers
+
+- High CPU utilization.
+- Database status error.
+- Disk subsystem status error.
+- Network status error.
+- Automation status error.
+- No aggregate data from the SDK.
+- Aggregate polling errors.
+- Offline local cameras.
+- Per-camera offline state and video-signal loss.
+- Recording delay, recording error, bitrate excess, and slow archive merge.
+- Archive depth below configured thresholds or below the rolling seven-day baseline.
+- Archive disk disabled, unavailable, unusable, read-only, formatting required, or reporting new errors.
+
+## Dashboard
+
+The included dashboard provides:
+
+- server and subsystem status cards;
+- online/total camera summary;
+- camera availability gauge;
+- CPU gauge;
+- current archive depth and complete archive days;
+- seven-day archive average and archive-relative-to-average gauge;
+- active problems;
+- archive, camera, and disk graphs.
+
+The dashboard is available in the host/template context. It is not created as a global dashboard under **Monitoring -> Dashboards**.
+
+## Known limitations
+
+- The template is intended for TRASSIR Server on Windows. Hardware NVRs require a separate template because their health semantics and available system metrics differ.
+- Only local channels are discovered. Remote NetworkNode channels are excluded.
+- Hardware recording state is not returned by every camera or connection method. Unsupported cameras show `Not supported`.
+- Memory usage is not included because it was not consistently available in the tested Windows HTTP SDK response.
+- The rolling archive baseline becomes representative after sufficient history has accumulated.
+- Self-signed HTTPS certificates are common; TLS handling depends on the Zabbix server or proxy configuration.
+
+## Troubleshooting
+
+- Check the latest value of `System: RAW - health and local channels`.
+- Check `System: RAW - aggregate polling errors`.
+- Check the discovered `Camera: ...: RAW` items.
+- Verify `{$TRASSIR.SCHEME}`, `{$TRASSIR.PORT}`, and `{$TRASSIR.SDK.PASSWORD}`.
+- Verify that the host is monitored by the correct Zabbix proxy.
+- If TRASSIR returns `sessionbomb protection`, remove duplicate templates or increase polling intervals.
+- After changing `{$TRASSIR.DISK.EXCLUDE}`, execute the archive-disk discovery rule.
+
+## Author
+
+Askuso
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
-
-## Disclaimer
-
-TRASSIR is a trademark of its respective owner. This is an independent community template.
+MIT
